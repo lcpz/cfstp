@@ -1,0 +1,7 @@
+[user]
+	name = Luca Capezzuto
+	email = luca.capezzuto@soton.ac.uk
+[credential]
+	helper = cache --timeout=3600
+[core]
+	editor = nvim

@@ -11,11 +11,11 @@ import model.Results;
 import toolkit.Utilities;
 
 /**
- * Cluster-based Coalition Formation (CCF) algorithm for solving CFSTPs.
+ * Cluster-based Task Scheduling (CTS) algorithm for solving CFSTPs.
  *
  * @author lcpz
  */
-public class CCF extends Solver {
+public class CTS extends Solver {
 
 	public static enum TaskStatus {
 		/**
@@ -60,14 +60,14 @@ public class CCF extends Solver {
 	protected int numberOfTravels;
 
 	/**
-	 * The number of time steps required to complete each task
-	 * (0 means uncompleted).
+	 * The number of time steps required to complete each task (0 means
+	 * uncompleted).
 	 */
 	protected int[] completionTime;
 
 	protected float maxTaskWorkload;
 
-	public CCF(CFSTP problem) {
+	public CTS(CFSTP problem) {
 		super(problem);
 
 		taskStatus = new TaskStatus[tasks.length];
@@ -115,7 +115,8 @@ public class CCF extends Solver {
 				if (taskStatus[v] == TaskStatus.ALLOCATED)
 					idx = 1;
 				int arrivalTime = currentTime + problem.getAgentTravelTime(a, agentLocations[a], taskLocations[v]);
-				if (arrivalTime <= demands[v][0] && demands[v][0] < bestDeadline[idx] && arrivalTime < bestArrivalTime[idx]) {
+				if (arrivalTime <= demands[v][0] && demands[v][0] < bestDeadline[idx]
+						&& arrivalTime < bestArrivalTime[idx]) {
 					bestDeadline[idx] = demands[v][0];
 					bestArrivalTime[idx] = arrivalTime;
 					bestTask[idx] = v;
@@ -270,10 +271,18 @@ public class CCF extends Solver {
 							cValue = problem.getCoalitionValue(v, agentsToAssign);
 
 						float workloadDone = 0f;
-						for (int j = 0; j < agentsToAssign.length - 1; j++)
+						for (int j = 0; j < agentsToAssign.length - 1; j++) {
+							/*
+							 * If multiple agents arrive at the same time, consider only the last one in the
+							 * order.
+							 */
+							if (arrivalTimes[j] == arrivalTimes[j + 1])
+								continue;
+
 							workloadDone += (arrivalTimes[j + 1] - arrivalTimes[j])
 									* problem.getCoalitionValue(v, ArrayUtils.addAll(
 											ArrayUtils.subarray(agentsToAssign, 0, j + 1), agentsWorkingAtTask));
+						}
 
 						/* if coalition of first i agents can complete v within deadline */
 						if (cValue * (demands[v][0] - arrivalTimes[i]) >= workloads[v] - workloadDone)
@@ -351,7 +360,7 @@ public class CCF extends Solver {
 			}
 
 			currentTime++;
-		} while (!allAgentsAreAvailable() && numberOfCompletedTasks < tasks.length && currentTime < maxTaskDeadline);
+		} while (!allAgentsAreAvailable() && numberOfCompletedTasks < tasks.length && currentTime <= maxTaskDeadline);
 
 		if (numberOfTravels > 0)
 			avgTravelTime /= numberOfTravels;

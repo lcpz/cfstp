@@ -24,7 +24,7 @@ class SolversTest {
 
 	static final int TEST_REPETITIONS = 1;
 
-	static final int AGENTS = 40;
+	static final int AGENTS = 20;
 	static final int TASKS = 300;
 	static final int WORLD_DIM = 50;
 
@@ -52,7 +52,7 @@ class SolversTest {
 
 	static CFSTP problem;
 
-	static String[] solvers = new String[] { "CFLA", "CFLAP", "CCF" };
+	static String[] solvers = new String[] { "CFLA", "CFLA2", "CTS" };
 
 	// solver: avg, min, max
 	static float[][] completedTaskPercentage = new float[solvers.length][3];
@@ -142,11 +142,11 @@ class SolversTest {
 			case "CFLA":
 				s = new CFLA(problem);
 				break;
-			case "CFLAP":
+			case "CFLA2":
 				s = new CFLA(problem, true);
 				break;
-			case "CCF":
-				s = new CCF(problem);
+			case "CTS":
+				s = new CTS(problem);
 				break;
 			default:
 				throw new Exception(String.format("%s is not a valid algorithm identifier", solvers[i]));

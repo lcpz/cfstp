@@ -13,7 +13,7 @@ import toolkit.Mathematics;
 import toolkit.Utilities;
 
 /**
- * Coalition Formation with improved Look-Ahead (CFLA^+) algorithm for solving CFSTPs.
+ * Coalition Formation with improved Look-Ahead (CFLA2) algorithm for solving CFSTPs.
  *
  * @author lcpz
  */
@@ -25,7 +25,7 @@ public class CFLA extends Solver {
 	 */
 	protected boolean[][][] T;
 
-	/* CFLA or CFLA^+ */
+	/* CFLA or CFLA2 */
 	private boolean improved;
 
 	public CFLA(CFSTP problem) {
@@ -254,7 +254,7 @@ public class CFLA extends Solver {
 								 * has the same weight (1) */
 								degreeV++;
 							else
-								/* CFLA^+: each task that can be completed after v
+								/* CFLA2: each task that can be completed after v
 								 * weights inversely proportional to its workload */
 								degreeV += 2 - Mathematics.getZ(demands[v2][1], minTaskWorkload, maxTaskWorkload);
 								/* in other words, the higher degreeV is, the more

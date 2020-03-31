@@ -1,7 +1,7 @@
 package model;
 
 import exceptions.NegativeDeadlineException;
-import exceptions.NotPositiveWorkloadException;
+import exceptions.NegativeWorkloadException;
 
 /**
  * A Coalition Formation with Spatial and Temporal constraints Problem (CFSTP).
@@ -43,7 +43,7 @@ public abstract class CFSTP {
 				if (demands[i][0] < 0)
 					throw new NegativeDeadlineException(String.format("task %d has deadline = %d", i, demands[i][0]));
 				if (demands[i][1] <= 0)
-					throw new NotPositiveWorkloadException(String.format("task %d has workload = %d", i, demands[i][1]));
+					throw new NegativeWorkloadException(String.format("task %d has workload = %d", i, demands[i][1]));
 
 				if (demands[i][0] > maxTaskDeadline)
 					maxTaskDeadline = demands[i][0];
@@ -56,7 +56,7 @@ public abstract class CFSTP {
 					minTaskWorkload = demands[i][1];
 
 			}
-		} catch (NegativeDeadlineException | NotPositiveWorkloadException e) {
+		} catch (NegativeDeadlineException | NegativeWorkloadException e) {
 			e.printStackTrace();
 		}
 
