@@ -260,8 +260,16 @@ public class CTS extends Solver {
 					int[] agentsToAssign = null;
 					float cValue;
 					int i;
+					float workloadDone = 0f;
 
 					for (i = 0; i < feasibleAgents.length; i++) {
+						/*
+						 * If multiple agents arrive at the same time, consider only the last one in the
+						 * order.
+						 */
+						if (i + 1 < feasibleAgents.length && arrivalTimes[i] == arrivalTimes[i + 1])
+							continue;
+
 						agentsToAssign = ArrayUtils.subarray(feasibleAgents, 0, i + 1);
 
 						if (agentsWorkingAtTask.length > 0)
@@ -270,21 +278,12 @@ public class CTS extends Solver {
 						else
 							cValue = problem.getCoalitionValue(v, agentsToAssign);
 
-						float workloadDone = 0f;
-						for (int j = 0; j < agentsToAssign.length - 1; j++) {
-							/*
-							 * If multiple agents arrive at the same time, consider only the last one in the
-							 * order.
-							 */
-							if (arrivalTimes[j] == arrivalTimes[j + 1])
-								continue;
-
-							workloadDone += (arrivalTimes[j + 1] - arrivalTimes[j])
+						if (i + 1 < feasibleAgents.length)
+							workloadDone += (arrivalTimes[i + 1] - arrivalTimes[i])
 									* problem.getCoalitionValue(v, ArrayUtils.addAll(
-											ArrayUtils.subarray(agentsToAssign, 0, j + 1), agentsWorkingAtTask));
-						}
+											ArrayUtils.subarray(agentsToAssign, 0, i + 1), agentsWorkingAtTask));
 
-						/* if coalition of first i agents can complete v within deadline */
+						/* If coalition of first i agents can complete v within deadline, stop. */
 						if (cValue * (demands[v][0] - arrivalTimes[i]) >= workloads[v] - workloadDone)
 							break;
 					}
@@ -328,7 +327,7 @@ public class CTS extends Solver {
 						if (DEBUG)
 							s.append(String.format("W%s ", Arrays.toString(workers)));
 
-						/* reduce w_v by u(C) */
+						/* Decrease w_v by u(C, v). */
 						workloads[v] -= problem.getCoalitionValue(v, workers);
 						completionTime[v]++;
 

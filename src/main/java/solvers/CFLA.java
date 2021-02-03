@@ -226,7 +226,7 @@ public class CFLA extends Solver {
 					if (vCompletionTime
 						+ problem.getAgentTravelTime(feasibleAgents[i], agentLocations[feasibleAgents[i]], taskLocations[v2]) > demands[v2][0])
 						feasibleAgents[i] = -1;
-				feasibleAgents = ArrayUtils.removeAllOccurences(feasibleAgents, -1);
+				feasibleAgents = ArrayUtils.removeAllOccurrences(feasibleAgents, -1);
 
 				/* 3. check if it exists an ECF coalition that can complete v2 */
 				i = 0;

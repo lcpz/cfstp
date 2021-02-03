@@ -3,21 +3,18 @@ package toolkit;
 public class Utilities {
 
 	/**
-	 * Get an integer array with numbers from 0 to n.
+	 * Get an Integer array with numbers from 0 to n-1.
 	 *
 	 * @param n The length of the array.
 	 * @return The array
 	 */
 	public static Integer[] getRangeArray(int n) {
-		if (n < 0)
+		if (n <= 0)
 			return null;
 
-		if (n == 0)
-			return new Integer[0];
+		Integer[] arr = new Integer[n];
 
-		Integer[] arr = new Integer[n + 1];
-
-		for (int i = 0; i < n + 1; i++)
+		for (int i = 0; i < n; i++)
 			arr[i] = i;
 
 		return arr;

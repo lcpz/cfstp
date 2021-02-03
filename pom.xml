@@ -4,14 +4,20 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>soton</groupId>
 	<artifactId>cfstp</artifactId>
-	<version>1.0.0</version>
+	<version>2.0.0</version>
 	<name>CFSTP</name>
 	<description>Algorithms for solving the CFSTP and its extensions</description>
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<maven.compiler.source>11</maven.compiler.source>
+		<maven.compiler.target>11</maven.compiler.target>
+		<maven.compiler.release>11</maven.compiler.release>
+	</properties>
 	<dependencies>
 		<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-lang3</artifactId>
-			<version>3.9</version>
+			<version>3.11</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.commons</groupId>

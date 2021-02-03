@@ -7,26 +7,22 @@
 Algorithms for solving the Coalition Formation with Spatial and Temporal
 constraints Problem ([CFSTP](https://eprints.soton.ac.uk/268497/)).
 
-Reference paper: [Anytime and Efficient Coalition Formation with
-Spatial and Temporal Constraints](https://arxiv.org/abs/2003.13806).
-
 ## Dependencies
 
+- Java 11+
 - [Eclipse IDE](https://www.eclipse.org/eclipseide)
-- [OpenJDK 13](https://openjdk.java.net/projects/jdk/13) or above
 - [Apache Maven](https://maven.apache.org)
 - [Apache Commons Lang 3](https://commons.apache.org/proper/commons-lang)
 - [Apache Commons Math 3](https://commons.apache.org/proper/commons-math)
 
 ## Usage
 
-1. Import the project in Eclipse
-2. Update it to download the Maven dependencies
+1. Import the project in Eclipse as a Maven project
+2. Update it to download the library dependencies
 3. Run `src/test/java/solvers/SolversTest`
 
 ## To-do list
 
-- [ ] CTS implementation is unnecessarily quadratic on the number of agents: fix it
 - [ ] Test with [MASPlanes](https://github.com/MASPlanes/MASPlanes)
 - [ ] Integrate the [XCSP parser](https://github.com/xcsp3team/XCSP3-Java-Tools) (for DCOPs)
 - [ ] Use [BURLAP](https://github.com/jmacglashan/burlap)'s [`GridWorld`](https://github.com/jmacglashan/burlap_examples/blob/master/src/main/java/edu/brown/cs/burlap/tutorials/HelloGridWorld.java) for GUI representation (see this [tutorial](http://burlap.cs.brown.edu/tutorials/hgw/p1.html))

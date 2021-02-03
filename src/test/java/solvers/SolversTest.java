@@ -20,7 +20,7 @@ import model.Results;
  */
 class SolversTest {
 
-	static final boolean PRINT_PROBLEM = true;
+	static final boolean PRINT_PROBLEM = false;
 
 	static final int TEST_REPETITIONS = 1;
 

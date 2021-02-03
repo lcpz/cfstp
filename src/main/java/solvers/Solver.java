@@ -10,7 +10,7 @@ import model.Results;
  */
 public abstract class Solver {
 
-	public static final boolean DEBUG = true;
+	public static final boolean DEBUG = false;
 
 	/* The problem */
 	protected CFSTP problem;
