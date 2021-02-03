@@ -6,145 +6,253 @@ import java.util.Comparator;
 import org.apache.commons.lang3.ArrayUtils;
 
 import model.CFSTP;
-import model.FeasibleAllocation;
-import model.Results;
-import toolkit.Utilities;
 
 /**
- * Cluster-based Task Scheduling (CTS) algorithm for solving CFSTPs.
+ * Cluster-based Node Scheduling (CTS) algorithm for solving CFSTPs.
  *
  * @author lcpz
  */
 public class CTS extends Solver {
 
-	public static enum TaskStatus {
-		/**
-		 * A task is allocable when at least one agent can reach it (feasible),
-		 * allocated when at least one agent is reaching or working on it, and completed
-		 * when its workload is <= 0.
-		 */
-		NOT_COMPLETED, ALLOCABLE, ALLOCATED, COMPLETED;
+	/**
+	 * Data structure containing a feasible coalition allocation.
+	 *
+	 * @author lcpz
+	 */
+	public class FeasibleAllocation {
+
+		public final int node, allocationTime;
+		public final int[] agents, arrivalTimes;
+
+		public FeasibleAllocation(int allocationTime, int node, int[] agents, int[] arrivalTimes) {
+			this.allocationTime = allocationTime;
+			this.node = node;
+			this.agents = agents;
+			this.arrivalTimes = arrivalTimes;
+		}
+
 	}
 
-	public static enum AgentStatus {
-		FREE, REACHING_A_TASK, WORKING_ON_A_TASK;
-	}
-
-	public static enum AssignmentStatus {
-		/**
-		 * {not working on, feasible to work on, reaching, working on, done with} a task
-		 */
-		NONE, FEASIBLE, REACHING, WORKING_ON, DONE;
-	}
-
-	protected TaskStatus[] taskStatus;
-	protected AgentStatus[] agentStatus;
-	protected AssignmentStatus[][] assignmentStatus; // [agent, task]
-
-	/* how many agents are currently working at each task */
-	protected int[] workingAtTask;
-
-	/**
-	 * For each agent (rows), it denotes the task it's reaching (column 0), and the
-	 * number of time steps left to reach it (column 1).
+	/* Each CTS message contains:
+	 * 1. A node address (8 bytes in Java).
+	 * 2. A boolean/message flag (1 byte).
+	 *
+	 * To which we have to add an integer value representing a time unit (1-4 bytes).
 	 */
-	protected int[][] reachingTask;
-
-	/**
-	 * A copy of task workloads that we use for keeping track of how much workload
-	 * is left per task.
-	 */
-	protected float[] workloads;
-
-	/* a counter for computing the average travel time after solving */
-	protected int numberOfTravels;
-
-	/**
-	 * The number of time steps required to complete each task (0 means
-	 * uncompleted).
-	 */
-	protected int[] completionTime;
-
-	protected float maxTaskWorkload;
+	public static final int BASE_MESSAGE_SIZE = 9;
 
 	public CTS(CFSTP problem) {
 		super(problem);
+	}
 
-		taskStatus = new TaskStatus[tasks.length];
-		agentStatus = new AgentStatus[agents.length];
-		assignmentStatus = new AssignmentStatus[agents.length][tasks.length];
-		Arrays.fill(taskStatus, TaskStatus.NOT_COMPLETED);
-		Arrays.fill(agentStatus, AgentStatus.FREE);
+	@Override
+	public int solve(int t) {
+		phaseOne();
+		return phaseTwo(); // returns the number of nodes whose visit is completed at time t
+	}
 
-		workingAtTask = new int[tasks.length];
-		reachingTask = new int[agents.length][2];
-
-		for (int a : agents) {
-			Arrays.fill(assignmentStatus[a], AssignmentStatus.NONE);
-			reachingTask[a][0] = -1;
-			reachingTask[a][1] = -1;
+	protected void phaseOne() {
+		for (int a = 0; a < agents.length; a++) {
+			/* if the problem is static or the agent is enabled */
+			if (problem.dynamismType == 0 || (problem.dynamismType == 1 && problem.enabled[a]) || problem.dynamismType == 2) {
+				/* if possible, allocate a to a node */
+				if (agentStatus[a] == AgentStatus.FREE) {
+					int v = getNodeAllocableToAgent(a);
+					if (v > -1) {
+						assignmentStatus[a][v] = AssignmentStatus.FEASIBLE;
+						nodeStatus[v] = NodeStatus.ALLOCABLE;
+						messagesSent++;
+						if (DEBUG)
+							System.out.println(String.format("agent %d can reach node %d", a, v));
+					}
+				/* otherwise, if a reached its assigned node, update its status */
+				} else if (reachingNode[a][0] > -1 && assignmentStatus[a][reachingNode[a][0]] == AssignmentStatus.REACHING)
+					updateAgentStatus(a);
+			} else if (problem.dynamismType == 1 && reachingNode[agents[a]][0] > -1) // remove a from the system
+				removeAgent(a);
 		}
-
-		workloads = new float[tasks.length];
-		for (int v = 0; v < demands.length; v++) {
-			workloads[v] = demands[v][1];
-			if (workloads[v] > maxTaskWorkload)
-				maxTaskWorkload = workloads[v];
-		}
-
-		completionTime = new int[tasks.length];
 	}
 
 	/**
-	 * Given agent a, return the current closest and uncompleted/allocated task v
+	 * Given agent a, return the current closest and uncompleted/allocated node v
 	 * reachable by a.
 	 *
 	 * @param a An agent index.
 	 *
-	 * @return A task index.
+	 * @return A node index.
 	 */
-	protected int getTaskAllocableToAgent(int a) {
-		int bestTask[] = new int[] { -1, -1 };
-		int bestDeadline[] = new int[] { maxTaskDeadline + 1, maxTaskDeadline + 1 };
-		int bestArrivalTime[] = new int[] { maxTaskDeadline + 1, maxTaskDeadline + 1 };
-		int idx;
+	protected int getNodeAllocableToAgent(int a) {
+		int bestNode[] = new int[] { -1, -1 };
+		int bestDeadline[] = new int[] { maximumProblemCompletionTime + 1, maximumProblemCompletionTime + 1 };
+		int bestArrivalTime[] = new int[] { maximumProblemCompletionTime + 1, maximumProblemCompletionTime + 1 };
+		int idx, arrivalTime;
 
-		for (int v : tasks)
-			if (taskStatus[v] == TaskStatus.NOT_COMPLETED || taskStatus[v] == TaskStatus.ALLOCATED) {
+		for (int v = 0; v < nodes.length; v++)
+			if (nodeStatus[v] == NodeStatus.NOT_COMPLETED || nodeStatus[v] == NodeStatus.ALLOCATED) {
 				idx = 0;
-				if (taskStatus[v] == TaskStatus.ALLOCATED)
+				if (nodeStatus[v] == NodeStatus.ALLOCATED)
 					idx = 1;
-				int arrivalTime = currentTime + problem.getAgentTravelTime(a, agentLocations[a], taskLocations[v]);
-				if (arrivalTime <= demands[v][0] && demands[v][0] < bestDeadline[idx]
+				arrivalTime = currentTime + agentLocations[a].getTravelTimeTo(nodeLocations[v], problem.getAgentSpeed(a));
+				if (arrivalTime < demands[v][0] && demands[v][0] < bestDeadline[idx]
 						&& arrivalTime < bestArrivalTime[idx]) {
 					bestDeadline[idx] = demands[v][0];
 					bestArrivalTime[idx] = arrivalTime;
-					bestTask[idx] = v;
+					bestNode[idx] = v;
 				}
 			}
 
-		if (bestTask[0] != -1) // prioritise unallocated tasks
-			return bestTask[0];
+		if (bestNode[0] != -1) { // prioritise unallocated nodes
+			networkLoad += Solver.bytesNeeded(bestArrivalTime[0]) + CTS.BASE_MESSAGE_SIZE;
+			return bestNode[0];
+		}
 
-		return bestTask[1];
+		if (bestNode[1] != -1)
+			networkLoad += Solver.bytesNeeded(bestArrivalTime[1]) + CTS.BASE_MESSAGE_SIZE;
+
+		return bestNode[1];
+	}
+
+	protected int phaseTwo() {
+		int numberOfVisitedNodesNow = 0;
+		int[] workers, reachers;
+		int i, j, a;
+		StringBuilder s;
+
+		for (int v = 0; v < nodes.length; v++) {
+			if (problem.dynamismType < 2 || (problem.dynamismType == 2 && problem.enabled[v])) {
+				if (nodeStatus[v] == NodeStatus.ALLOCABLE)
+					computeAndAllocateCoalition(v);
+
+				if (nodeStatus[v] == NodeStatus.ALLOCATED) { // update node workload
+					if (DEBUG)
+						s = new StringBuilder(String.format("%4d workload: %4.2f", v, workloads[v]).replace(",", "."));
+
+					workers = new int[visitingNode[v]];
+					reachers = new int[agents.length];
+					i = 0;
+					j = 0;
+					for (a = 0; a < agents.length; a++)
+						switch (assignmentStatus[a][v]) {
+						case VISITING:
+							workers[i++] = a;
+							break;
+						case REACHING:
+							reachers[j++] = a;
+							break;
+						default:
+							break;
+						}
+
+					if (j > 0) {
+						reachers = ArrayUtils.subarray(reachers, 0, j);
+						if (DEBUG)
+							s.append(String.format(", reaching: %3d", reachers.length));
+					}
+
+					if (i > 0) {
+						if (DEBUG)
+							s.append(String.format(", working: %3d", workers.length));
+
+						/* Decrease w_v by u(C, v). */
+						workloads[v] -= problem.getCoalitionValue(v, workers);
+
+						if (workloads[v] <= 0) {
+							if (DEBUG)
+								s.append(", done \u2713");
+
+							//coalitionSizes.add(Integer.valueOf(workers.length));
+							visitingNode[v] = 0;
+							nodeStatus[v] = NodeStatus.COMPLETED;
+							numberOfVisitedNodesNow++;
+							for (a = 0; a < workers.length; a++) {
+								assignmentStatus[a][v] = AssignmentStatus.DONE;
+								agentStatus[a] = AgentStatus.FREE;
+								isBusyAgent[a] = false;
+							}
+							/* Line 7 in Algorithm 2 of D-CTS */
+							networkLoad += (reachers.length + workers.length) * (Solver.bytesNeeded(currentTime) + BASE_MESSAGE_SIZE);
+						}
+					}
+
+					// nobody reaching nor working on v, but v might be still allocable
+					if (i == 0 && j == 0 && currentTime < demands[v][0]) {
+						isAllocatedNode[v] = false;
+						nodeStatus[v] = NodeStatus.NOT_COMPLETED; // next t verifies if it is allocable
+					}
+
+					if (DEBUG)
+						System.out.println(s.toString());
+				}
+			}
+		}
+
+		if (problem.dynamismType == 0)
+			stoppingCondition = allAgentsAreAvailable();
+
+		return numberOfVisitedNodesNow;
+	}
+
+	protected void computeAndAllocateCoalition(int v) {
+		FeasibleAllocation feasibleAllocation = getFeasibleAgentsByArrivalTime(v);
+		int[] feasibleAgents = feasibleAllocation.agents;
+		int[] agentsVisitingNode = getAgentsVisitingNode(v);
+		int[] arrivalTimes = feasibleAllocation.arrivalTimes;
+		int[] subCoalition = null;
+		float cValue;
+		int i;
+		float workloadDone = 0f;
+
+		for (i = 0; i < feasibleAgents.length; i++) {
+			/*
+			 * If multiple agents arrive at the same time, consider only the last one in the
+			 * order.
+			 */
+			if (i + 1 < feasibleAgents.length && arrivalTimes[i] == arrivalTimes[i + 1])
+				continue;
+
+			subCoalition = ArrayUtils.subarray(feasibleAgents, 0, i + 1);
+
+			if (agentsVisitingNode.length > 0)
+				cValue = problem.getCoalitionValue(v,
+						ArrayUtils.addAll(agentsVisitingNode, subCoalition));
+			else
+				cValue = problem.getCoalitionValue(v, subCoalition);
+
+			if (i + 1 < feasibleAgents.length)
+				workloadDone += (arrivalTimes[i + 1] - arrivalTimes[i]) *
+					problem.getCoalitionValue(v, ArrayUtils.addAll(subCoalition, agentsVisitingNode));
+
+			NCCCs++; // due to the following conditional
+
+			/* If coalition of first i agents can complete v within deadline, stop. */
+			if (cValue * (demands[v][0] - arrivalTimes[i]) >= workloads[v] - workloadDone)
+				break;
+		}
+
+		while (++i < feasibleAgents.length)
+			assignmentStatus[feasibleAgents[i]][v] = AssignmentStatus.NONE;
+
+		allocate(v, subCoalition, arrivalTimes);
+
+		messagesSent += subCoalition.length;
 	}
 
 	/**
-	 * Given a task v, get the agents that can reach v at current time, and return
+	 * Given a node v, get the agents that can reach v at current time, and return
 	 * them sorted by arrival time to v.
 	 *
-	 * @param v The Task.
+	 * @param v The Node.
 	 *
 	 * @return a feasible allocation (i.e., the above agents plus related useful
 	 *         information)
 	 */
-	private FeasibleAllocation getFeasibleAgentsByArrivalTime(int v) {
+	protected FeasibleAllocation getFeasibleAgentsByArrivalTime(int v) {
 		/* get feasible agents */
 		int[] feasibleAgents = new int[agents.length];
 
 		int i = 0;
 
-		for (int a : agents)
+		for (int a = 0; a < agents.length; a++)
 			if (assignmentStatus[a][v] == AssignmentStatus.FEASIBLE)
 				feasibleAgents[i++] = a;
 
@@ -158,8 +266,7 @@ public class CTS extends Solver {
 		Integer[] indexes = new Integer[arrivalTimes.length];
 
 		for (i = 0; i < arrivalTimes.length; i++) {
-			arrivalTimes[i] = currentTime + problem.getAgentTravelTime(feasibleAgents[i],
-					agentLocations[feasibleAgents[i]], taskLocations[v]);
+			arrivalTimes[i] = currentTime + agentLocations[feasibleAgents[i]].getTravelTimeTo(nodeLocations[v], problem.getAgentSpeed(feasibleAgents[i]));
 			indexes[i] = i;
 		}
 
@@ -185,190 +292,18 @@ public class CTS extends Solver {
 		return new FeasibleAllocation(currentTime, v, sortedFeasibleAgents, sortedArrivalTimes);
 	}
 
-	private int[] getAgentsWorkingAtTask(int v) {
-		if (workingAtTask[v] <= 0)
+	protected int[] getAgentsVisitingNode(int v) {
+		if (visitingNode[v] <= 0)
 			return ArrayUtils.EMPTY_INT_ARRAY;
 
 		int[] workers = new int[agents.length];
 		int i = 0;
 
-		for (int a : agents)
-			if (assignmentStatus[a][v] == AssignmentStatus.WORKING_ON)
+		for (int a = 0; a < agents.length; a++)
+			if (assignmentStatus[a][v] == AssignmentStatus.VISITING)
 				workers[i++] = a;
 
 		return ArrayUtils.subarray(workers, 0, i);
-	}
-
-	private void allocate(int v, int[] agents, int[] arrivalTimes) {
-		for (int i = 0; i < agents.length; i++)
-			if (agentStatus[agents[i]] == AgentStatus.FREE) {
-				isBusyAgent[agents[i]] = true;
-				int travelTimeSteps = arrivalTimes[i] - currentTime + 1;
-
-				if (travelTimeSteps > 0) {
-					agentStatus[agents[i]] = AgentStatus.REACHING_A_TASK;
-					assignmentStatus[agents[i]][v] = AssignmentStatus.REACHING;
-					reachingTask[agents[i]] = new int[] { v, travelTimeSteps };
-					avgTravelTime += travelTimeSteps;
-					numberOfTravels++;
-				} else { /* agent is already at task location */
-					agentStatus[agents[i]] = AgentStatus.WORKING_ON_A_TASK;
-					assignmentStatus[agents[i]][v] = AssignmentStatus.WORKING_ON;
-					workingAtTask[v]++;
-				}
-			}
-	}
-
-	@Override
-	public void solve() { /* Total: O(|V||A|^2) */
-		int numberOfCompletedTasks = 0;
-		StringBuilder s;
-
-		do {
-			if (DEBUG)
-				System.out.println(String.format("[%3d, %3d]", currentTime, numberOfCompletedTasks));
-
-			for (int a : agents)
-				/* if possible, allocate a to a task */
-				if (agentStatus[a] == AgentStatus.FREE) {
-					int v = getTaskAllocableToAgent(a);
-					if (v > -1) {
-						assignmentStatus[a][v] = AssignmentStatus.FEASIBLE;
-						taskStatus[v] = TaskStatus.ALLOCABLE;
-					}
-					/* otherwise, if a reached its assigned task, update its status and position */
-				} else if (reachingTask[a][0] > -1
-						&& assignmentStatus[a][reachingTask[a][0]] == AssignmentStatus.REACHING) {
-					if (taskStatus[reachingTask[a][0]] == TaskStatus.COMPLETED) {
-						agentStatus[a] = AgentStatus.FREE;
-						isBusyAgent[a] = false;
-						assignmentStatus[a][reachingTask[a][0]] = AssignmentStatus.NONE;
-					} else if (--reachingTask[a][1] <= 0) {
-						workingAtTask[reachingTask[a][0]]++;
-						agentStatus[a] = AgentStatus.WORKING_ON_A_TASK;
-						assignmentStatus[a][reachingTask[a][0]] = AssignmentStatus.WORKING_ON;
-						agentLocations[a] = taskLocations[reachingTask[a][0]];
-					}
-				}
-
-			for (int v : tasks) {
-				if (taskStatus[v] == TaskStatus.ALLOCABLE) {
-					FeasibleAllocation feasibleAllocation = getFeasibleAgentsByArrivalTime(v);
-					int[] feasibleAgents = feasibleAllocation.getAgents();
-					int[] agentsWorkingAtTask = getAgentsWorkingAtTask(v);
-					int[] arrivalTimes = feasibleAllocation.getArrivalTimes();
-					int[] agentsToAssign = null;
-					float cValue;
-					int i;
-					float workloadDone = 0f;
-
-					for (i = 0; i < feasibleAgents.length; i++) {
-						/*
-						 * If multiple agents arrive at the same time, consider only the last one in the
-						 * order.
-						 */
-						if (i + 1 < feasibleAgents.length && arrivalTimes[i] == arrivalTimes[i + 1])
-							continue;
-
-						agentsToAssign = ArrayUtils.subarray(feasibleAgents, 0, i + 1);
-
-						if (agentsWorkingAtTask.length > 0)
-							cValue = problem.getCoalitionValue(v,
-									ArrayUtils.addAll(agentsWorkingAtTask, agentsToAssign));
-						else
-							cValue = problem.getCoalitionValue(v, agentsToAssign);
-
-						if (i + 1 < feasibleAgents.length)
-							workloadDone += (arrivalTimes[i + 1] - arrivalTimes[i])
-									* problem.getCoalitionValue(v, ArrayUtils.addAll(
-											ArrayUtils.subarray(agentsToAssign, 0, i + 1), agentsWorkingAtTask));
-
-						/* If coalition of first i agents can complete v within deadline, stop. */
-						if (cValue * (demands[v][0] - arrivalTimes[i]) >= workloads[v] - workloadDone)
-							break;
-					}
-
-					while (++i < feasibleAgents.length)
-						assignmentStatus[feasibleAgents[i]][v] = AssignmentStatus.NONE;
-
-					allocate(v, agentsToAssign, arrivalTimes);
-
-					taskStatus[v] = TaskStatus.ALLOCATED;
-				}
-
-				if (taskStatus[v] == TaskStatus.ALLOCATED) {
-					if (DEBUG)
-						s = new StringBuilder(String.format("%5d (%.2f) -> ", v, workloads[v]));
-
-					int[] workers = new int[workingAtTask[v]];
-					int[] reachers = new int[agents.length];
-
-					int i = 0, j = 0;
-
-					for (int a : agents)
-						switch (assignmentStatus[a][v]) {
-						case WORKING_ON:
-							workers[i++] = a;
-							break;
-						case REACHING:
-							reachers[j++] = a;
-							break;
-						default:
-							break;
-						}
-
-					if (j > 0) {
-						reachers = ArrayUtils.subarray(reachers, 0, j);
-						if (DEBUG)
-							s.append(String.format("R%s ", Arrays.toString(reachers)));
-					}
-
-					if (i > 0) {
-						if (DEBUG)
-							s.append(String.format("W%s ", Arrays.toString(workers)));
-
-						/* Decrease w_v by u(C, v). */
-						workloads[v] -= problem.getCoalitionValue(v, workers);
-						completionTime[v]++;
-
-						if (workloads[v] <= 0) {
-							if (DEBUG)
-								s.append(" \u2713");
-
-							workingAtTask[v] = 0;
-							taskStatus[v] = TaskStatus.COMPLETED;
-							numberOfCompletedTasks++;
-							for (int a : workers) {
-								assignmentStatus[a][v] = AssignmentStatus.DONE;
-								agentStatus[a] = AgentStatus.FREE;
-								isBusyAgent[a] = false;
-							}
-						}
-					}
-
-					if (DEBUG)
-						System.out.println(s);
-				}
-			}
-
-			if (numberOfCompletedTasks < tasks.length && allAgentsAreAvailable()) {
-				if (DEBUG)
-					System.out.println(String.format(
-							"\nNo tasks can be further allocated, stopping before max deadline (%d)", maxTaskDeadline));
-				break;
-			}
-
-			currentTime++;
-		} while (!allAgentsAreAvailable() && numberOfCompletedTasks < tasks.length && currentTime <= maxTaskDeadline);
-
-		if (numberOfTravels > 0)
-			avgTravelTime /= numberOfTravels;
-
-		if (numberOfCompletedTasks > 0)
-			avgCompletionTime = Utilities.sum(completionTime) / (float) numberOfCompletedTasks;
-
-		results = new Results(avgTravelTime, avgCompletionTime, numberOfCompletedTasks / (float) tasks.length);
-
 	}
 
 }

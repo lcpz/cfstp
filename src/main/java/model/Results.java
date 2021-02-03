@@ -1,31 +1,25 @@
 package model;
 
 /**
- * Data structure containing the results of a CFSTP solver, namely: average
- * travel and completion time; completed task percentage.
+ * A data structure that characterises the quality of a solution.
  *
  * @author lcpz
  */
 public class Results {
 
-	private float avgTravelTime, avgCompletionTime, completedTaskPercentage;
+	public static final String[] METRICS = {
+		"messages sent",         // number of messages sent
+		"network load (bytes)",          // total size of the messages sent
+		"NCCCs",                 // number of non-concurrent constraint checks (Meisels, 2007)
+		//"problemCompletionTime", // time at which the last node has been visited (only valid in static environments)
+		//"medianCoalitionSize",   // median coalition size
+		"visited nodes (%)"      // number of nodes visited / total number of nodes
+	};
 
-	public Results(float avgTravelTime, float avgCompletionTime, float completedTaskPercentage) {
-		this.avgTravelTime = avgTravelTime;
-		this.avgCompletionTime = avgCompletionTime;
-		this.completedTaskPercentage = completedTaskPercentage;
-	}
+	public final float[] values;
 
-	public float getAvgTravelTime() {
-		return avgTravelTime;
-	}
-
-	public float getAvgCompletionTime() {
-		return avgCompletionTime;
-	}
-
-	public float getCompletedTaskPercentage() {
-		return completedTaskPercentage;
+	public Results(float[] values) {
+		this.values = values;
 	}
 
 }
